@@ -1,5 +1,7 @@
 import React, { Component } from 'react';
 import { Button, Row, Col, Container, Form } from 'react-bootstrap';
+import TreeGenerator from './TreeGenerator'
+import { brotliDecompressSync } from 'zlib';
 
 export default class StartPage extends Component {
 	constructor(props) {
@@ -41,7 +43,22 @@ export default class StartPage extends Component {
         
 		if (response !== null) {
 			let body = await response.json();
-			this.setState({data : body})
+			let tree = [];
+			for (let key in body) {
+				let cluster = {key: 'key' + key, title: 'cluster ' + key, children:[]} 
+				let clusterArray = body[key]
+				let count = 0;
+				for (let key2 in clusterArray) {
+					if (clusterArray[key2]) {
+						count++;
+						let blog = {key: 'key' + key2, title: 'Blog: ' + clusterArray[key2].Blog, children:[]}
+						cluster.children.push(blog)
+					}
+				}
+				cluster.title += ` (${count})`
+				tree.push(cluster)
+			}
+			this.setState({data : tree})
 		}
 	}
 
@@ -77,7 +94,7 @@ export default class StartPage extends Component {
 		return (
 			<Container>
 				{this.renderAll()}
-				{this.state.data ? console.log(this.state.data) : <Row></Row>}
+				{this.state.data ? <TreeGenerator data={this.state.data}></TreeGenerator> : <Row></Row>}
 			</Container>
 		);
 	}
