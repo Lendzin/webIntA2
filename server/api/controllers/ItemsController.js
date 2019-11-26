@@ -12,9 +12,8 @@ module.exports = {
 
   getXIterations: async function(req, res) {
     const numberOfIterations = req.param('number');
-    console.log(numberOfIterations)
     let centroids = await getCentroids(numberOfIterations);
-    let obj = { }
+    let obj = {};
     for (const [i, centroid] of centroids.entries()) {
       obj[i] = centroid['assignedBlogs']
     }
@@ -23,7 +22,13 @@ module.exports = {
   },
 
   getAllAssignments: async function(req, res) {
-    return res.status(200).json({woops: []})
+    let centroids = await getCentroids2();
+    let obj = {};
+    for (const [i, centroid] of centroids.entries()) {
+      obj[i] = centroid['assignedBlogs']
+    }
+
+    return res.status(200).json(obj);
   },
 
   getHierarchicalClustering() {
@@ -31,6 +36,123 @@ module.exports = {
   }
 
 };
+
+async function getCentroids2() {  //Mainly repetition (not following DRY pattern in this iteration)
+  let blogData = await getBlogData();
+
+  let n = await getWordsCount(blogData);
+  let maxCountFromBlogs = await getMaxWordCountFromBlogs(n, blogData);
+  let centroids = [];
+  let k = 5;
+
+  for(let c = 0; c < k; c++ ) {
+    let centroid = {};
+    centroid = await getRandomWordCounts(maxCountFromBlogs);
+    centroid.assignedBlogs = [];
+    centroid.previousAssignment = [];
+    centroids.push(centroid);
+  }
+  while (checkCentroids(centroids)) {
+    centroids.forEach(centroid => { 
+      centroid.previousAssignment = JSON.parse(JSON.stringify(centroid['assignedBlogs'])); //make a copy to previous assignments of the assigned blogs
+      centroid['assignedBlogs'] = []; //empty assignments
+    });
+    for (const [i, blog] of blogData.entries()) {  // go through all blogs and pick a blog
+      let distance = Number.MAX_VALUE;
+      bestCentroid = {};
+      for (const [i, centroid] of centroids.entries()) {
+        let cDist = await getPearson(centroid, blog, n);
+        if (cDist < distance) {
+          bestCentroid = centroid;
+          distance = cDist;
+        }
+      }
+      bestCentroid.assignedBlogs.push(blog);
+    }
+    centroids.forEach(centroid => {
+      let length = centroid['assignedBlogs'].length;
+      for (let key in centroid) {
+        if (key === 'assignedBlogs' || key === 'previousAssignment') {
+        // do nothing
+        } else {
+          if (length > 0) {
+            for (let key in centroid) {  // reset the centroid to 0, if it has assigned blogs.
+              if (key === 'assignedBlogs' || key === 'previousAssignment') {
+              // do nothing
+              } else {
+                centroid[key] = 0;
+              }
+            }
+            centroid['assignedBlogs'].forEach(blog => { // add the values of the blogs to the centroid
+              for (let key in blog) {
+                if (key === 'Blog' || key === 'previousAssignment') {
+                // do nothing
+                } else {
+                  centroid[key]+= Number(blog[key]);
+                }
+              }
+            });
+            for (let key in centroid) {  // reset the centroid to 0, if it has assigned blogs.
+              if (key === 'assignedBlogs' || key === 'previousAssignment') {
+              // do nothing
+              } else {
+                centroid[key] = centroid[key]/length;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+  return centroids;
+}
+
+
+function checkCentroids(centroids) {
+  
+  let centroidsWithPreviousAssign = centroids.filter(centroid => {
+    return (centroid['previousAssignment'].length > 1);
+  });
+
+  if (centroidsWithPreviousAssign.length > 1) {
+    let currentState = []
+    centroidsWithPreviousAssign.forEach(centroid => {
+      blogsInPrevious = (getBlogsInArray(centroid['previousAssignment']));
+      blogsInCurrent = (getBlogsInArray(centroid['assignedBlogs']));
+      blogsInPrevious.sort();
+      blogsInCurrent.sort();
+      currentState.push((JSON.stringify(blogsInPrevious) === JSON.stringify(blogsInCurrent)))
+    });
+
+    stateContainsUnequality = []
+    currentState.forEach(state => {
+      if (state) {
+        // do nothing
+      } else {
+        stateContainsUnequality.push(state);
+      }
+    });
+
+    if (stateContainsUnequality.length === 0) {
+      // console.log(stateContainsUnequality)
+      return false;
+    } else {
+      // console.log(stateContainsUnequality)
+      return true;
+    }
+  } else {
+    return true;
+  }
+  
+}
+
+function getBlogsInArray(array) {
+  let newArray = [];
+  array.forEach(blog => {
+    newArray.push(blog.Blog);
+  });
+  return newArray;
+}
 
 async function getCentroids(numberOfIterations) {
   let blogData = await getBlogData();
@@ -114,7 +236,7 @@ async function getMaxWordCountFromBlogs(n, blogData) {
   let highestValues = [];
   for (const [i, blog] of blogData.entries()) {
     for (let key in blog) {
-      if (key === 'Blog') {
+      if (key === 'Blog' || key === 'previousAssignment') {
         // do nothing
       } else {
         highestValues[key] = 0;
@@ -127,14 +249,12 @@ async function getMaxWordCountFromBlogs(n, blogData) {
     if (i === 0) {
       // do nothing
     } else {
-      let count = 1;
       for (let key in blog) {
-        if (key === 'Blog') {
+        if (key === 'Blog'|| key === 'previousAssignment') {
           // do nothing
         } else {
           if (Number(highestValues[key]) < Number(blog[key])) {
             highestValues[key] = Number(blog[key]);
-            count++;
           }
         }
       }
@@ -155,12 +275,6 @@ async function getBlogData() {
   return await csv({delimiter: '	'}).fromFile(__dirname + pathBlogData);
 }
 
-function mergeClosestBlog() {
-
-
-  return {mergedBlog: x, cluster: y};
-}
-
 
 async function getPearson(blogA, blogB, wordCount) {
   let sumA = 0;
@@ -172,7 +286,7 @@ async function getPearson(blogA, blogB, wordCount) {
   let den = 0;
 
   for (let key in blogA) {
-    if (key === 'Blog' || key === 'assignedBlogs') {
+    if (key === 'Blog' || key === 'assignedBlogs' || key === 'previousAssignment') {
       //do nothing
     } else {
       let cntA = Number(blogA[key]);
