@@ -1,7 +1,8 @@
 import React, { Component } from 'react';
-import { Button, Row, Col, Container, Form } from 'react-bootstrap';
+import { Button, Row, Col, Container, Form, Spinner } from 'react-bootstrap';
 import TreeGenerator from './TreeGenerator'
-import { brotliDecompressSync } from 'zlib';
+const {parse, stringify} = require('flatted/cjs')
+
 
 export default class StartPage extends Component {
 	constructor(props) {
@@ -9,12 +10,14 @@ export default class StartPage extends Component {
 		this.state = {
 			maxIterations: 0,
 			typeChoice: 'iterations',
-			data: null,
+			tree: null,
+			isLoading: false,
 		};
 	}
 
 	async componentDidMount() {
 
+  
 	}
 
 	
@@ -31,7 +34,24 @@ export default class StartPage extends Component {
 		this.setState({maxIterations: size})
 	}
 
+	generateTreeSection = (root) => {
+		console.log(root)
+		let rootNode = {key: root.id, title: root.blog.Blog || root.id, children:[]}
+		let leftBranch = {}
+		if (root.left) {
+			leftBranch = this.generateTreeSection(root.left)
+		}
+		let rightBranch = {}
+		if (root.right) {
+			rightBranch = this.generateTreeSection(root.right)
+		}
+		rootNode.children.push(leftBranch)
+		rootNode.children.push(rightBranch)
+		return rootNode;
+	}
+
     requestData = async () => {
+		this.setState({isLoading: true})
 		let response = null;
 		if (this.state.typeChoice === 'iterations') {
 			response = await fetch(`http://localhost:1337/getXIterations/${this.state.maxIterations}`);
@@ -42,12 +62,17 @@ export default class StartPage extends Component {
 		}
         
 		if (response !== null) {
-			let body = await response.json();
 			let tree = [];
-			for (let key in body) {
-				let cluster = {key: 'key' + key, title: 'cluster ' + key, children:[]} 
-				let clusterArray = body[key]
-				let count = 0;
+			if (this.state.typeChoice === 'hierarchical') {
+				let parsedResponse = await response.json();
+				tree = this.generateTreeSection(parsedResponse[0])
+			}
+			if (this.state.typeChoice === 'iterations' || this.state.typeChoice === 'assignments') {
+				let body = await response.json();
+				for (let key in body) {
+					let cluster = {key: 'key' + key, title: 'cluster ' + key, children:[]} 
+					let clusterArray = body[key]
+					let count = 0;
 				for (let key2 in clusterArray) {
 					if (clusterArray[key2]) {
 						count++;
@@ -58,9 +83,12 @@ export default class StartPage extends Component {
 				cluster.title += ` (${count})`
 				tree.push(cluster)
 			}
-			this.setState({data : tree})
+			}
+			this.setState({tree : tree, isLoading: false})
 		}
 	}
+
+
 
 	renderAll = () => {
 		return (
@@ -77,14 +105,24 @@ export default class StartPage extends Component {
 		            </Form.Control>
 				</Form>
 				<Row style={{ marginTop: 10, marginBottom: 10 }}></Row>
-				<Form>	
+				{this.state.typeChoice === 'iterations' ? 
+					<Form>	
 						<Button style={{marginRight: 10}} onClick={() => this.setMaxIterations(this.state.maxIterations-1)}>{'<'}</Button>
 							{'Max Iterations: ' + this.state.maxIterations}
 						<Button style={{marginLeft: 10}} onClick={() => this.setMaxIterations(this.state.maxIterations+1)}>{'>'}</Button>
-				</Form>
-
+					</Form> : <></>}
                 <Row style={{ marginTop: 10, marginBottom: 10 }}></Row>
-                <Button onClick={this.requestData}>Send Request to Server</Button>
+                {this.state.isLoading ? 
+				<Button variant="primary" disabled>
+    				<Spinner
+      					as="span"
+      					animation="grow"
+      					size="sm"
+      					role="status"
+      					aria-hidden="true"
+    				/>
+    				Loading...
+  				</Button>: <Button onClick={this.requestData}>Send Request to Server</Button>}
                 <Row style={{ marginTop: 10, marginBottom: 10 }}></Row>
 			</>
 		)
@@ -94,7 +132,7 @@ export default class StartPage extends Component {
 		return (
 			<Container>
 				{this.renderAll()}
-				{this.state.data ? <TreeGenerator data={this.state.data}></TreeGenerator> : <Row></Row>}
+				{this.state.tree ? <TreeGenerator tree={this.state.tree}></TreeGenerator> : <Row></Row>}
 			</Container>
 		);
 	}

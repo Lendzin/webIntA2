@@ -5,8 +5,23 @@
  * @help        :: See https://sailsjs.com/docs/concepts/actions
  */
 const csv = require('csvtojson');
+// const {parse, stringify} = require('flatted/cjs')
+var stringify = require('json-stringify-safe')
+// var CircularJSON = require('circular-json-es6')
 
 const pathBlogData = './../../blogdata.txt';
+var Cluster = (function() {
+  var nextId = 1;
+
+  return function Cluster() {
+    this.id = nextId++;
+    this.parent = null;
+    this.left = null;
+    this.right = null;
+    this.blog = null;
+    this.distance = 0;
+  };
+})();
 
 module.exports = {
 
@@ -17,7 +32,6 @@ module.exports = {
     for (const [i, centroid] of centroids.entries()) {
       obj[i] = centroid['assignedBlogs']
     }
-
     return res.status(200).json(obj);
   },
 
@@ -31,11 +45,80 @@ module.exports = {
     return res.status(200).json(obj);
   },
 
-  getHierarchicalClustering() {
+  getHierarchicalClustering: async function(req, res) {
+    let blogData = await getBlogData();
+    let n = await getWordsCount(blogData);
+    let listOfClusters = await generateBlogClusters(blogData);
+    let result = await hierarchyGeneration(listOfClusters, n);
+    result = await stringify(result);
 
+    return res.status(200).send(result);
   }
-
 };
+
+
+async function generateBlogClusters(blogData) {
+
+  listOfClusters = [];
+
+  for (const [i, blog] of blogData.entries()) {
+    cluster = new Cluster();
+    cluster.blog = blog;
+    listOfClusters.push(cluster);
+  }
+  return listOfClusters;
+}
+
+
+
+async function hierarchyGeneration(listOfClusters, n) {
+  while (listOfClusters.length > 1) {
+
+    let closest = Number.MAX_VALUE;
+    this.clusterA = new Cluster();
+    this.clusterB = new Cluster();
+
+    listOfClusters.forEach(clusterX => {
+      listOfClusters.forEach(clusterY => {
+        let distance = getPearson(clusterX.blog, clusterY.blog, n);
+        if (distance < closest && clusterX.id !== clusterY.id) {
+
+          closest = distance;
+          clusterA = clusterX;
+          clusterB = clusterY;
+        }
+      });
+    });
+    let clusterC = new Cluster();
+    clusterC = mergeClusters(clusterA, clusterB, closest);
+    console.log(listOfClusters.length)
+
+    listOfClusters.push(clusterC);
+    let newList = listOfClusters.filter(cluster => {
+      return (cluster.id !== clusterA.id && cluster.id !== clusterB.id);
+    });
+    listOfClusters = newList;
+  }
+  return listOfClusters;
+}
+
+function mergeClusters(clusterA, clusterB, distance) {
+  let parentCluster = new Cluster();
+
+  clusterA.parent = parentCluster;
+  clusterB.parent = parentCluster;
+  parentCluster.left = clusterA;
+  parentCluster.right = clusterB;
+
+  let newBlog = {};
+  for (let key in clusterA.blog) {
+    let newValue = (Number(clusterA.blog[key]) + Number(clusterB.blog[key]))/2;
+    newBlog[key] = newValue;
+  }
+  parentCluster.blog = newBlog;
+  parentCluster.distance = distance;
+  return parentCluster;
+}
 
 async function getCentroids2() {  //Mainly repetition (not following DRY pattern in this iteration)
   let blogData = await getBlogData();
@@ -61,7 +144,7 @@ async function getCentroids2() {  //Mainly repetition (not following DRY pattern
       let distance = Number.MAX_VALUE;
       bestCentroid = {};
       for (const [i, centroid] of centroids.entries()) {
-        let cDist = await getPearson(centroid, blog, n);
+        let cDist = getPearson(centroid, blog, n);
         if (cDist < distance) {
           bestCentroid = centroid;
           distance = cDist;
@@ -92,8 +175,8 @@ async function getCentroids2() {  //Mainly repetition (not following DRY pattern
                 }
               }
             });
-            for (let key in centroid) {  // reset the centroid to 0, if it has assigned blogs.
-              if (key === 'assignedBlogs' || key === 'previousAssignment') {
+            for (let key in centroid) {  
+              if (key === 'assignedBlogs' || key === 'previousAssignment') { //add the average values to the centroid
               // do nothing
               } else {
                 centroid[key] = centroid[key]/length;
@@ -177,7 +260,7 @@ async function getCentroids(numberOfIterations) {
       let distance = Number.MAX_VALUE;
       bestCentroid = {};
       for (const [i, centroid] of centroids.entries()) {
-        let cDist = await getPearson(centroid, blog, n);
+        let cDist = getPearson(centroid, blog, n);
         if (cDist < distance) {
           bestCentroid = centroid;
           distance = cDist;
@@ -208,7 +291,7 @@ async function getCentroids(numberOfIterations) {
                 }
               }
             });
-            for (let key in centroid) {  // reset the centroid to 0, if it has assigned blogs.
+            for (let key in centroid) {  // add the average values to the centroid
               if (key === 'assignedBlogs') {
                 // do nothing
               } else {
@@ -276,7 +359,7 @@ async function getBlogData() {
 }
 
 
-async function getPearson(blogA, blogB, wordCount) {
+function getPearson(blogA, blogB, wordCount) {
   let sumA = 0;
   let sumB = 0;
   let sumASq = 0;
@@ -284,9 +367,8 @@ async function getPearson(blogA, blogB, wordCount) {
   let pSum = 0;
   let n = wordCount;
   let den = 0;
-
   for (let key in blogA) {
-    if (key === 'Blog' || key === 'assignedBlogs' || key === 'previousAssignment') {
+    if (key === 'Blog' || key === 'assignedBlogs' || key === 'previousAssignment') {  //lets pretend there are no blogs called this
       //do nothing
     } else {
       let cntA = Number(blogA[key]);

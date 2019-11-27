@@ -7,23 +7,6 @@ import ReactDOM from 'react-dom';
 import Tree, { TreeNode } from 'rc-tree';
 import 'rc-tree/assets/index.css';
 
-const treeData = [
-  { key: '0-0', title: 'parent 1', children:
-    [
-      { key: '0-0-0', title: 'parent 1-1', children:
-        [
-          { key: '0-0-0-0', title: 'parent 1-1-0' },
-        ],
-      },
-      { key: '0-0-1', title: 'parent 1-2', children:
-          [
-            { key: '0-0-1-0', title: 'parent 1-2-0', disableCheckbox: true },
-            { key: '0-0-1-1', title: 'parent 1-2-1' },
-          ],
-      },
-    ],
-  },
-];
 
 class TreeGenerator extends Component {
   static propTypes = {
@@ -63,12 +46,11 @@ class TreeGenerator extends Component {
 
   render() {
 
-    const {data} = this.props
+    const {tree} = this.props
 
     return (
       <div style={{ margin: '0 20px' }}>
         <h2>Clusters and Blogs</h2>
-        {console.log(data)}
         <Tree
           className="myCls"
           showLine
@@ -80,7 +62,7 @@ class TreeGenerator extends Component {
           defaultCheckedKeys={this.state.defaultCheckedKeys}
           onSelect={this.onSelect}
           onCheck={this.onCheck}
-          treeData={data}
+          treeData={tree}
         />
       </div>
     );
